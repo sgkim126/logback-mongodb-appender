@@ -5,6 +5,7 @@ import ch.qos.logback.core.UnsynchronizedAppenderBase
 import com.mongodb.DBCollection
 import com.mongodb.DBObject
 import com.mongodb.MongoClient
+import com.mongodb.WriteConcern
 import com.osinka.subset.DBO
 import com.osinka.subset.DBObjectBuffer
 import scala.concurrent.Lock
@@ -93,5 +94,15 @@ class MongoDBAppender extends UnsynchronizedAppenderBase[ILoggingEvent]  {
     )
 
     val logObject: DBObject = logBuffer()
+
+    try {
+      save(logObject)
+    } catch {
+      case _: Throwable =>
+    }
+  }
+
+  private def save(log: DBObject) {
+    mongo.save(log, WriteConcern.UNACKNOWLEDGED)
   }
 }

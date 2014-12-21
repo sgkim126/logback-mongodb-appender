@@ -2,6 +2,9 @@ package logback.mongodb
 
 import ch.qos.logback.classic.spi.ILoggingEvent
 import ch.qos.logback.core.UnsynchronizedAppenderBase
+import com.mongodb.DBObject
+import com.osinka.subset.DBO
+import com.osinka.subset.DBObjectBuffer
 
 class MongoDBAppender extends UnsynchronizedAppenderBase[ILoggingEvent]  {
   private var _db: String = "logback"
@@ -38,5 +41,30 @@ class MongoDBAppender extends UnsynchronizedAppenderBase[ILoggingEvent]  {
 
 
   override def append(event: ILoggingEvent) {
+    val caller: Seq[DBObjectBuffer] = event.getCallerData.map { st =>
+      DBO("class" -> st.getClassName,
+        "file" -> st.getFileName,
+        "line" -> st.getLineNumber,
+        "method" -> st.getMethodName
+      )
+    }
+
+    import scala.collection.convert.wrapAsScala.mapAsScalaMap
+
+    val mdc: Seq[DBObjectBuffer] = event.getMDCPropertyMap.map {
+      case (key: String, value: String) =>
+        DBO("key" -> key, "value" -> value)
+    }.toSeq
+
+    val logBuffer: DBObjectBuffer = DBO("level" -> event.getLevel.toString,
+      "name" -> event.getLoggerName,
+      "message" -> event.getMessage,
+      "timestamp" -> event.getTimeStamp,
+      "thread" -> event.getThreadName,
+      "caller" -> caller,
+      "mdc" -> mdc
+    )
+
+    val logObject: DBObject = logBuffer()
   }
 }

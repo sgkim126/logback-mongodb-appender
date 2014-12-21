@@ -68,7 +68,39 @@ class MongoDBAppender extends UnsynchronizedAppenderBase[ILoggingEvent]  {
     _mongo.get
   }
 
+  private var _queueSize: Int = 30
+  def setQueueSize(queueSize: Int) {
+    withLock { _ =>
+      _queueSize = queueSize
+    }(queueLock)
+  }
+
+  private var queue: Seq[DBObject] = Seq.empty[DBObject]
+  private val queueLock: Lock = new Lock
+  private def consumeQueue() {
+    if (queue.nonEmpty) {
+      withLock { _ =>
+        queue = queue.foldLeft(Seq.empty[DBObject]) { (queue, log) =>
+          try {
+            save(log)
+            queue
+          } catch {
+            case _: Throwable =>
+              queue :+ log
+          }
+        }
+      }(queueLock)
+    }
+  }
+  private def enqueue(log: DBObject) {
+    withLock { _ =>
+      queue = (queue :+ log).takeRight(_queueSize)
+    }(queueLock)
+  }
+
   override def append(event: ILoggingEvent) {
+    consumeQueue()
+
     val caller: Seq[DBObjectBuffer] = event.getCallerData.map { st =>
       DBO("class" -> st.getClassName,
         "file" -> st.getFileName,
@@ -99,6 +131,7 @@ class MongoDBAppender extends UnsynchronizedAppenderBase[ILoggingEvent]  {
       save(logObject)
     } catch {
       case _: Throwable =>
+        enqueue(logObject)
     }
   }
 

@@ -2,9 +2,12 @@ package logback.mongodb
 
 import ch.qos.logback.classic.spi.ILoggingEvent
 import ch.qos.logback.core.UnsynchronizedAppenderBase
+import com.mongodb.DBCollection
 import com.mongodb.DBObject
+import com.mongodb.MongoClient
 import com.osinka.subset.DBO
 import com.osinka.subset.DBObjectBuffer
+import scala.concurrent.Lock
 
 class MongoDBAppender extends UnsynchronizedAppenderBase[ILoggingEvent]  {
   private var _db: String = "logback"
@@ -39,6 +42,30 @@ class MongoDBAppender extends UnsynchronizedAppenderBase[ILoggingEvent]  {
     }(mongoLock)
   }
 
+  def withLock[T](function: Unit => T)(lock: Lock): T = {
+    lock.acquire()
+    try {
+      function()
+    } finally {
+      lock.release()
+    }
+  }
+
+  private var _mongo: Option[DBCollection] = None
+  private val mongoLock: Lock = new Lock
+
+  private def mongo: DBCollection = {
+    if (_mongo.isEmpty) {
+      withLock { _ =>
+        if (_mongo.isEmpty) {
+          val client = new MongoClient(_address, _port)
+          val db = client.getDB(_db)
+          _mongo = Some(db.getCollection(_collection))
+        }
+      }(mongoLock)
+    }
+    _mongo.get
+  }
 
   override def append(event: ILoggingEvent) {
     val caller: Seq[DBObjectBuffer] = event.getCallerData.map { st =>

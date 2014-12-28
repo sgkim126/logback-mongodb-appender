@@ -59,7 +59,8 @@ class MongoDBAppender extends UnsynchronizedAppenderBase[ILoggingEvent]  {
     }(mongoLock)
   }
 
-  private var _port: Int = 27017
+  private val defaultPort = 27017
+  private var _port: Int = defaultPort
   def setPort(port: Int) {
     _port = port
     withLock { _ =>
@@ -122,7 +123,8 @@ class MongoDBAppender extends UnsynchronizedAppenderBase[ILoggingEvent]  {
       }(mongoLock)
     }
 
-  private var _queueSize: Int = 30
+  private val defaultQueueSize = 30
+  private var _queueSize: Int = defaultQueueSize
   def setQueueSize(queueSize: Int) {
     withLock { _ =>
       _queueSize = queueSize

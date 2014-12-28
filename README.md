@@ -1,5 +1,8 @@
 logback-mongodb-appender
 ======
+
+[![Build Status](https://travis-ci.org/sgkim126/logback-mongodb-appender.svg)](https://travis-ci.org/sgkim126/logback-mongodb-appender)
+
 ## Example
 ```xml
 <appender name="MONGO" class="logback.mongodb.MongoDBAppender">

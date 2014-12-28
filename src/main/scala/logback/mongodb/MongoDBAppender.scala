@@ -2,6 +2,7 @@ package logback.mongodb
 
 import ch.qos.logback.classic.spi.ILoggingEvent
 import ch.qos.logback.core.UnsynchronizedAppenderBase
+import com.mongodb.BasicDBObject
 import com.mongodb.DBCollection
 import com.mongodb.DBObject
 import com.mongodb.MongoClient
@@ -44,6 +45,14 @@ class MongoDBAppender extends UnsynchronizedAppenderBase[ILoggingEvent]  {
     }(mongoLock)
   }
 
+  private var _expireAfterSeconds: Int = 60 * 60 * 24 // 24 hours
+  def setExpireAfterSeconds(expireAfterSeconds: Int) {
+    _expireAfterSeconds = expireAfterSeconds
+    withLock { _ =>
+      _mongo = None
+    }(mongoLock)
+  }
+
   def withLock[T](function: Unit => T)(lock: Lock): T = {
     lock.acquire()
     try {
@@ -56,18 +65,40 @@ class MongoDBAppender extends UnsynchronizedAppenderBase[ILoggingEvent]  {
   private var _mongo: Option[DBCollection] = None
   private val mongoLock: Lock = new Lock
 
-  private def mongo: DBCollection = {
-    if (_mongo.isEmpty) {
+  private def mongo: DBCollection =
+    _mongo.getOrElse {
       withLock { _ =>
-        if (_mongo.isEmpty) {
+        _mongo.getOrElse {
           val client = new MongoClient(_address, _port)
           val db = client.getDB(_db)
-          _mongo = Some(db.getCollection(_collection))
+          val collection = db.getCollection(_collection)
+
+          val isIndexOnTimestamp: Function[AnyRef, Boolean] = {
+            case index: DBObject =>
+              index.get("key") match {
+                case key: DBObject =>
+                  Option(key.get("timestamp")).isDefined
+                case _ =>
+                  false
+              }
+            case _ =>
+              false
+          }
+
+          if (collection.getIndexInfo.toArray.exists(isIndexOnTimestamp)) {
+            val newIndex =
+              new BasicDBObject("keyPattern", new BasicDBObject("timestamp", 1))
+                .append("expireAfterSeconds", _expireAfterSeconds)
+            db.command(new BasicDBObject("collMod", _collection).append("index", newIndex))
+          } else {
+            collection.createIndex(new BasicDBObject("timestamp", 1), new BasicDBObject("expireAfterSeconds", _expireAfterSeconds))
+          }
+
+          _mongo = Some(collection)
+          collection
         }
       }(mongoLock)
     }
-    _mongo.get
-  }
 
   private var _queueSize: Int = 30
   def setQueueSize(queueSize: Int) {

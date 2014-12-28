@@ -1,6 +1,6 @@
 name := "logback-mongodb-appender"
 
-version := "0.9"
+version := "0.9.1"
 
 libraryDependencies ++= Seq(
   "ch.qos.logback" % "logback-classic" % "1.1.2",

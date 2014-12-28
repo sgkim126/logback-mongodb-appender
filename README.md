@@ -7,9 +7,9 @@ logback-mongodb-appender
   <port>27017</prt>
   <db>logback</db>
   <collection>log</collection>
+  <expireAfterSeconds>86400</expireAfterSeconds>
 </appender>
 ```
 ======
 ## Futher works
 * Support MongoClient for sharded cluster
-* Expire log data

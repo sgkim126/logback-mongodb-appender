@@ -8,6 +8,7 @@ import com.mongodb.MongoClient
 import com.mongodb.WriteConcern
 import com.osinka.subset.DBO
 import com.osinka.subset.DBObjectBuffer
+import java.util.Date
 import scala.concurrent.Lock
 
 class MongoDBAppender extends UnsynchronizedAppenderBase[ILoggingEvent]  {
@@ -119,7 +120,7 @@ class MongoDBAppender extends UnsynchronizedAppenderBase[ILoggingEvent]  {
     val logBuffer: DBObjectBuffer = DBO("level" -> event.getLevel.toString,
       "name" -> event.getLoggerName,
       "message" -> event.getMessage,
-      "timestamp" -> event.getTimeStamp,
+      "timestamp" -> new Date(event.getTimeStamp),
       "thread" -> event.getThreadName,
       "caller" -> caller,
       "mdc" -> mdc

@@ -34,7 +34,34 @@ import com.osinka.subset.DBObjectBuffer
 import java.util.Date
 import scala.concurrent.Lock
 
+object MongoDBAppender {
+  private case class CallerName(
+                             Name: String = "caller",
+                             Class: String = "class",
+                             File: String = "file",
+                             Line: String = "line",
+                             Method: String = "method"
+                             )
+  private case class MDCName(
+                          Name: String = "mdc",
+                          Key: String = "key",
+                          Value: String = "value"
+                          )
+  private case class LogName(
+                          Level: String = "level",
+                          Logger: String = "name",
+                          Message: String = "message",
+                          Timestamp: String = "timestamp",
+                          Thread: String = "thread",
+                          Caller: CallerName = CallerName(),
+                          MDC: MDCName = MDCName())
+
+  private val LogDocumentFieldName = LogName()
+}
+
 class MongoDBAppender extends UnsynchronizedAppenderBase[ILoggingEvent]  {
+  import MongoDBAppender.LogDocumentFieldName
+
   private var _db: String = "logback"
   def setDb(name: String) {
     _db = name
@@ -100,7 +127,7 @@ class MongoDBAppender extends UnsynchronizedAppenderBase[ILoggingEvent]  {
             case index: DBObject =>
               index.get("key") match {
                 case key: DBObject =>
-                  Option(key.get("timestamp")).isDefined
+                  Option(key.get(LogDocumentFieldName.Timestamp)).isDefined
                 case _ =>
                   false
               }
@@ -110,11 +137,14 @@ class MongoDBAppender extends UnsynchronizedAppenderBase[ILoggingEvent]  {
 
           if (collection.getIndexInfo.toArray.exists(isIndexOnTimestamp)) {
             val newIndex =
-              new BasicDBObject("keyPattern", new BasicDBObject("timestamp", 1))
+              new BasicDBObject("keyPattern", new BasicDBObject(LogDocumentFieldName.Timestamp, 1))
                 .append("expireAfterSeconds", _expireAfterSeconds)
             db.command(new BasicDBObject("collMod", _collection).append("index", newIndex))
           } else {
-            collection.createIndex(new BasicDBObject("timestamp", 1), new BasicDBObject("expireAfterSeconds", _expireAfterSeconds))
+            collection.createIndex(
+              new BasicDBObject(LogDocumentFieldName.Timestamp, 1),
+              new BasicDBObject("expireAfterSeconds", _expireAfterSeconds)
+            )
           }
 
           _mongo = Some(collection)
@@ -158,10 +188,10 @@ class MongoDBAppender extends UnsynchronizedAppenderBase[ILoggingEvent]  {
     consumeQueue()
 
     val caller: Seq[DBObjectBuffer] = event.getCallerData.map { st =>
-      DBO("class" -> st.getClassName,
-        "file" -> st.getFileName,
-        "line" -> st.getLineNumber,
-        "method" -> st.getMethodName
+      DBO(LogDocumentFieldName.Caller.Class -> st.getClassName,
+        LogDocumentFieldName.Caller.File -> st.getFileName,
+        LogDocumentFieldName.Caller.Line -> st.getLineNumber,
+        LogDocumentFieldName.Caller.Method -> st.getMethodName
       )
     }
 
@@ -169,16 +199,17 @@ class MongoDBAppender extends UnsynchronizedAppenderBase[ILoggingEvent]  {
 
     val mdc: Seq[DBObjectBuffer] = event.getMDCPropertyMap.map {
       case (key: String, value: String) =>
-        DBO("key" -> key, "value" -> value)
+        DBO(LogDocumentFieldName.MDC.Key -> key, LogDocumentFieldName.MDC.Value -> value)
     }.toSeq
 
-    val logBuffer: DBObjectBuffer = DBO("level" -> event.getLevel.toString,
-      "name" -> event.getLoggerName,
-      "message" -> event.getMessage,
-      "timestamp" -> new Date(event.getTimeStamp),
-      "thread" -> event.getThreadName,
-      "caller" -> caller,
-      "mdc" -> mdc
+    val logBuffer: DBObjectBuffer = DBO(
+      LogDocumentFieldName.Level -> event.getLevel.toString,
+      LogDocumentFieldName.Logger -> event.getLoggerName,
+      LogDocumentFieldName.Message -> event.getMessage,
+      LogDocumentFieldName.Timestamp -> new Date(event.getTimeStamp),
+      LogDocumentFieldName.Thread -> event.getThreadName,
+      LogDocumentFieldName.Caller.Name -> caller,
+      LogDocumentFieldName.MDC.Name -> mdc
     )
 
     val logObject: DBObject = logBuffer()
